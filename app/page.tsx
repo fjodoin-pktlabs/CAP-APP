@@ -25,7 +25,9 @@ import {
   EyeOff,
   Globe,
   User,
-  Smartphone
+  Smartphone,
+  AlertTriangle,
+  Zap
 } from 'lucide-react';
 
 // Microsoft first-party applications from entra-caps.py
@@ -377,6 +379,17 @@ export default function EnhancedCAPApp() {
     }
   };
 
+  const getAppNameById = (appId: string) => {
+    const foundApp = selectedApps.find(app => app.id === appId);
+    if (foundApp) return foundApp.name;
+    
+    // Check first-party apps
+    const firstPartyApp = Object.entries(FIRST_PARTY_APPS).find(([_, id]) => id === appId);
+    if (firstPartyApp) return firstPartyApp[0];
+    
+    return appId; // Return ID if name not found
+  };
+
   const renderAnalysisResults = (data: any) => {
     if (!data || !data.value) return null;
 
@@ -384,6 +397,13 @@ export default function EnhancedCAPApp() {
     const totalPolicies = policies.length;
     const appliedPolicies = policies.filter((p: { policyApplies: any; }) => p.policyApplies).length;
     const enabledPolicies = policies.filter((p: { state: string; }) => p.state === "enabled").length;
+
+    // Sort policies: triggered ones first, then by name
+    const sortedPolicies = [...policies].sort((a, b) => {
+      if (a.policyApplies && !b.policyApplies) return -1;
+      if (!a.policyApplies && b.policyApplies) return 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
 
     return (
       <div className="space-y-6">
@@ -401,10 +421,12 @@ export default function EnhancedCAPApp() {
               <CardTitle className="text-2xl">{enabledPolicies}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className={appliedPolicies > 0 ? "border-orange-500 bg-orange-50" : ""}>
             <CardHeader className="pb-2">
-              <CardDescription>Policies Applied</CardDescription>
-              <CardTitle className="text-2xl">{appliedPolicies}</CardTitle>
+              <CardDescription>Policies Triggered</CardDescription>
+              <CardTitle className={`text-2xl ${appliedPolicies > 0 ? "text-orange-600" : ""}`}>
+                {appliedPolicies}
+              </CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -440,36 +462,95 @@ export default function EnhancedCAPApp() {
           </CardContent>
         </Card>
 
+        {/* Triggered Policies Alert */}
+        {appliedPolicies > 0 && (
+          <Alert className="border-orange-500 bg-orange-50">
+            <AlertTriangle className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="text-orange-700">
+              <strong>{appliedPolicies} Conditional Access {appliedPolicies === 1 ? 'Policy' : 'Policies'} triggered!</strong> 
+              {" "}These policies would affect the user's sign-in experience.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Policy Results */}
         <Card>
           <CardHeader>
-            <CardTitle>Policy Results</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Policy Results
+              {appliedPolicies > 0 && <Zap className="h-5 w-5 text-orange-500" />}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-96">
               <div className="space-y-4">
-                {policies.map((policy: { displayName: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; state: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; policyApplies: any; id: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; analysisReasons: any; grantControls: { builtInControls: any[]; }; }, index: React.Key | null | undefined) => (
-                  <div key={index} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">{policy.displayName}</h4>
+                {sortedPolicies.map((policy: any, index: number) => (
+                  <div 
+                    key={index} 
+                    className={`border rounded-lg p-4 ${
+                      policy.policyApplies 
+                        ? "border-orange-500 bg-orange-50 shadow-md" 
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{policy.displayName}</h4>
+                        {policy.policyApplies && (
+                          <Badge variant="destructive" className="bg-orange-600">
+                            TRIGGERED
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={policy.state === "enabled" ? "default" : "secondary"}>
                           {policy.state}
                         </Badge>
                         {policy.policyApplies ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                          <AlertTriangle className="h-5 w-5 text-orange-500" />
                         ) : (
-                          <XCircle className="h-5 w-5 text-gray-400" />
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
                         )}
                       </div>
                     </div>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>ID: {policy.id}</p>
-                      <p>Analysis Reason: {policy.analysisReasons || "N/A"}</p>
+                    
+                    <div className="text-sm text-muted-foreground space-y-2">
+                      <p>ID: <code className="bg-muted px-1 rounded text-xs">{policy.id}</code></p>
+                      
+                      {/* Show triggering applications */}
+                      {policy.policyApplies && policy.applicationContext && (
+                        <div className="bg-orange-100 p-2 rounded border border-orange-200">
+                          <p className="font-medium text-orange-800 text-xs mb-1">Triggered by Applications:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {policy.applicationContext.includeApplications?.map((appId: string) => (
+                              <Badge key={appId} variant="outline" className="text-xs bg-white border-orange-300">
+                                {getAppNameById(appId)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Grant Controls */}
                       {policy.grantControls?.builtInControls?.length > 0 && (
                         <div>
-                          Controls: {policy.grantControls.builtInControls.map(control => (
-                            <Badge key={control} variant="outline" className="ml-1">{control}</Badge>
+                          <span className="font-medium">Required Controls: </span>
+                          {policy.grantControls.builtInControls.map((control: string) => (
+                            <Badge key={control} variant="outline" className="ml-1">
+                              {control}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Session Controls */}
+                      {policy.sessionControls && Object.keys(policy.sessionControls).length > 0 && (
+                        <div>
+                          <span className="font-medium">Session Controls: </span>
+                          {Object.keys(policy.sessionControls).map((control: string) => (
+                            <Badge key={control} variant="outline" className="ml-1">
+                              {control}
+                            </Badge>
                           ))}
                         </div>
                       )}
