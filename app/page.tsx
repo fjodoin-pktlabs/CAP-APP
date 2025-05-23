@@ -1,3 +1,4 @@
+
 "use client";
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -227,6 +228,7 @@ export default function EnhancedCAPApp() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [uploadedData, setUploadedData] = useState(null);
+  const [appSearchTerm, setAppSearchTerm] = useState("");
 
   const handleAppToggle = (appId: string, appName: string) => {
     setSelectedApps(prev => {
@@ -258,6 +260,12 @@ export default function EnhancedCAPApp() {
   const clearAllApps = () => {
     setSelectedApps([]);
   };
+
+  // Filter first-party apps based on search term
+  const filteredFirstPartyApps = Object.entries(FIRST_PARTY_APPS).filter(([name, id]) =>
+    name.toLowerCase().includes(appSearchTerm.toLowerCase()) ||
+    id.toLowerCase().includes(appSearchTerm.toLowerCase())
+  );
 
   const getUserObjectId = async (upn: string, token: string) => {
     const url = `https://graph.microsoft.com/v1.0/users/${upn}`;
@@ -507,9 +515,9 @@ export default function EnhancedCAPApp() {
                           {policy.state}
                         </Badge>
                         {policy.policyApplies ? (
-                          <AlertTriangle className="h-5 w-5 text-orange-500" />
-                        ) : (
                           <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <XCircle className="h-5 w-5 text-gray-400" />
                         )}
                       </div>
                     </div>
@@ -517,17 +525,76 @@ export default function EnhancedCAPApp() {
                     <div className="text-sm text-muted-foreground space-y-2">
                       <p>ID: <code className="bg-muted px-1 rounded text-xs">{policy.id}</code></p>
                       
-                      {/* Show triggering applications */}
-                      {policy.policyApplies && policy.applicationContext && (
-                        <div className="bg-orange-100 p-2 rounded border border-orange-200">
-                          <p className="font-medium text-orange-800 text-xs mb-1">Triggered by Applications:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {policy.applicationContext.includeApplications?.map((appId: string) => (
-                              <Badge key={appId} variant="outline" className="text-xs bg-white border-orange-300">
-                                {getAppNameById(appId)}
+                      {/* Show why the policy triggered or didn't trigger */}
+                      {policy.policyApplies ? (
+                        <div className="bg-orange-100 p-3 rounded border border-orange-200">
+                          <p className="font-medium text-orange-800 text-sm mb-2">🔥 Policy Triggered!</p>
+                          
+                          {/* Show analysis reason if available */}
+                          {policy.analysisReasons && policy.analysisReasons !== "notSet" && (
+                            <div className="mb-2">
+                              <span className="font-medium text-orange-800 text-xs">Trigger Reason: </span>
+                              <Badge variant="outline" className="text-xs bg-orange-50 border-orange-300 text-orange-700">
+                                {policy.analysisReasons}
                               </Badge>
-                            ))}
-                          </div>
+                            </div>
+                          )}
+                          
+                          {/* Show target applications */}
+                          {policy.conditions?.applications?.includeApplications && (
+                            <div>
+                              <p className="font-medium text-orange-800 text-xs mb-1">Target Applications:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {policy.conditions.applications.includeApplications.map((appId: string) => (
+                                  <Badge key={appId} variant="outline" className="text-xs bg-white border-orange-300">
+                                    {appId === "All" ? "All Applications" : getAppNameById(appId)}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Show target users/roles if specific */}
+                          {policy.conditions?.users && (
+                            <div className="mt-2">
+                              {policy.conditions.users.includeUsers?.length > 0 && !policy.conditions.users.includeUsers.includes("All") && (
+                                <div className="mb-1">
+                                  <span className="font-medium text-orange-800 text-xs">Target Users: </span>
+                                  <Badge variant="outline" className="text-xs bg-white border-orange-300">
+                                    {policy.conditions.users.includeUsers.length} specific user(s)
+                                  </Badge>
+                                </div>
+                              )}
+                              {policy.conditions.users.includeRoles?.length > 0 && (
+                                <div className="mb-1">
+                                  <span className="font-medium text-orange-800 text-xs">Target Roles: </span>
+                                  <Badge variant="outline" className="text-xs bg-white border-orange-300">
+                                    {policy.conditions.users.includeRoles.length} admin role(s)
+                                  </Badge>
+                                </div>
+                              )}
+                              {policy.conditions.users.includeUsers?.includes("All") && (
+                                <div className="mb-1">
+                                  <span className="font-medium text-orange-800 text-xs">Target Users: </span>
+                                  <Badge variant="outline" className="text-xs bg-white border-orange-300">
+                                    All Users
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-green-50 p-2 rounded border border-green-200">
+                          <p className="font-medium text-green-800 text-xs mb-1">✅ Policy Not Triggered</p>
+                          {policy.analysisReasons && policy.analysisReasons !== "notSet" && (
+                            <div>
+                              <span className="text-green-700 text-xs">Reason: </span>
+                              <Badge variant="outline" className="text-xs bg-green-50 border-green-300 text-green-700">
+                                {policy.analysisReasons}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       )}
                       
@@ -754,20 +821,35 @@ export default function EnhancedCAPApp() {
 
                   <div>
                     <Label>Microsoft First-Party Applications</Label>
-                    <ScrollArea className="h-48 mt-2 border rounded-lg p-3">
+                    {/* Search bar for first-party apps */}
+                    <div className="mt-2 mb-3">
+                      <Input
+                        placeholder="Search applications..."
+                        value={appSearchTerm}
+                        onChange={(e) => setAppSearchTerm(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <ScrollArea className="h-48 border rounded-lg p-3">
                       <div className="space-y-2">
-                        {Object.entries(FIRST_PARTY_APPS).map(([name, id]) => (
-                          <div key={id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={id}
-                              checked={selectedApps.some(app => app.id === id)}
-                              onCheckedChange={() => handleAppToggle(id, name)}
-                            />
-                            <Label htmlFor={id} className="text-sm font-normal cursor-pointer">
-                              {name}
-                            </Label>
-                          </div>
-                        ))}
+                        {filteredFirstPartyApps.length > 0 ? (
+                          filteredFirstPartyApps.map(([name, id]) => (
+                            <div key={id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={id}
+                                checked={selectedApps.some(app => app.id === id)}
+                                onCheckedChange={() => handleAppToggle(id, name)}
+                              />
+                              <Label htmlFor={id} className="text-sm font-normal cursor-pointer">
+                                {name}
+                              </Label>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No applications found matching "{appSearchTerm}"
+                          </p>
+                        )}
                       </div>
                     </ScrollArea>
                   </div>
